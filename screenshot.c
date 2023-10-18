@@ -2,24 +2,31 @@
 #include <windows.h>
 #include <wingdi.h>
 
-void SaveHBITMAPToFile(HBITMAP hBMP, const char *pszFile)
-{
+void SaveHBITMAPToFile(HBITMAP hBMP, const char* pszFile) {
     BITMAP bmp;
+    // Retrieve information about the HBITMAP
     GetObject(hBMP, sizeof(BITMAP), &bmp);
 
+    // Define the BMP file header
     BITMAPFILEHEADER bmfHeader;
     bmfHeader.bfType = 0x4D42; // "BM"
-    bmfHeader.bfSize = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER) + bmp.bmWidth * bmp.bmHeight * (bmp.bmBitsPixel / 8);
+    bmfHeader.bfSize = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER) + bmp.bmWidth * bmp.bmHeight * 3;
     bmfHeader.bfReserved1 = 0;
     bmfHeader.bfReserved2 = 0;
     bmfHeader.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
 
+    // Create a device context compatible with the HBITMAP
+    HDC hDC = GetDC(NULL);
+    HDC hMemDC = CreateCompatibleDC(hDC);
+    SelectObject(hMemDC, hBMP);
+
+    // Define the BMP info header
     BITMAPINFOHEADER bi;
     bi.biSize = sizeof(BITMAPINFOHEADER);
     bi.biWidth = bmp.bmWidth;
-    bi.biHeight = bmp.bmHeight * -1; // uncompressed RGB bitmaps if Height is negative, the bitmap is a top-down
+    bi.biHeight = bmp.bmHeight;
     bi.biPlanes = 1;
-    bi.biBitCount = bmp.bmBitsPixel;
+    bi.biBitCount = 24; // Set to 24 bits per pixel
     bi.biCompression = BI_RGB;
     bi.biSizeImage = 0;
     bi.biXPelsPerMeter = 0;
@@ -27,20 +34,29 @@ void SaveHBITMAPToFile(HBITMAP hBMP, const char *pszFile)
     bi.biClrUsed = 0;
     bi.biClrImportant = 0;
 
-    FILE *file = fopen(pszFile, "wb");
-    if (file)
-    {
+    // Create the BMP file and open it for writing
+    FILE* file = fopen(pszFile, "wb");
+    if (file) {
+        // Write the BMP file header
         fwrite(&bmfHeader, sizeof(BITMAPFILEHEADER), 1, file);
+        // Write the BMP info header
         fwrite(&bi, sizeof(BITMAPINFOHEADER), 1, file);
-        int imageSize = bmp.bmWidth * bmp.bmHeight * (bmp.bmBitsPixel / 8);
-        BYTE *imageData = (BYTE *)malloc(imageSize);
-        if (GetBitmapBits(hBMP, imageSize, imageData))
-        {
+        // Calculate the size of the image data
+        int imageSize = bmp.bmWidth * bmp.bmHeight * 3; // 3 bytes per pixel for 24-bit
+        // Allocate memory for the image data
+        BYTE* imageData = (BYTE*)malloc(imageSize);
+        if (GetDIBits(hMemDC, hBMP, 0, bmp.bmHeight, imageData, (BITMAPINFO*)&bi, DIB_RGB_COLORS)) {
+            // Write the image data to the file
             fwrite(imageData, imageSize, 1, file);
         }
+        // Free the allocated memory
         free(imageData);
+        // Close the BMP file
         fclose(file);
     }
+    // Release the device contexts
+    DeleteDC(hMemDC);
+    ReleaseDC(NULL, hDC);
 }
 
 void getResolution(int *screenWidth, int *screenHeight)
